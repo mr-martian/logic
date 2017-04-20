@@ -4,7 +4,9 @@
     <meta charset="UTF-8" />
     <script src="lodash.js"></script>
     <style>
-      .full {}
+      .full {
+        background: green;
+      }
       .empty {
         background: gray;
       }
@@ -29,6 +31,7 @@
     <span class="bad">Badly formed input</span>
     <span class="badrule">Badly formed rule</span>
     <span class="invalid">Invalid line</span>
+    <span>or: ∨ and: ∙ not: ~ implies: ⊃ biconditional: ≡</span>
     <ol id="prems"></ol>
     <hr>
     <ol id="proof"></ol>
@@ -42,6 +45,66 @@
       var names = {};
       names[cand] = 'and'; names[cor] = 'or'; names[cthen] = 'implies'; names[cbicond] = 'bicond';
       var cexists = "∃";
+      var rules1 = {
+        DN: [
+          {
+            form: {left: 0, op: 'not', right: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}}},
+            result: {op: 'var', left: 0, right: 'x'},
+            nest: true
+          },
+          {
+            result: {left: 0, op: 'not', right: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}}},
+            form: {op: 'var', left: 0, right: 'x'},
+            nest: true
+          },
+        ]
+      };
+      var rules2 = {
+        MP: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {op: 'var', left: 0, right: 'x'},
+            result: {op: 'var', left: 0, right: 'y'}
+          }
+        ],
+        MT: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'y'}},
+            result: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}}
+          }
+        ],
+        HS: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {left: {op: 'var', left: 0, right: 'y'}, op: 'implies', right: {op: 'var', left: 0, right: 'z'}},
+            result: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'z'}}
+          }
+        ],
+        DS: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'or', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}},
+            result: {op: 'var', left: 0, right: 'y'}
+          }
+        ],
+        CD: [
+          {
+            form1: {left: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+                    op: 'and',
+                    right: {left: {op: 'var', left: 0, right: 'z'}, op: 'implies', right: {op: 'var', left: 0, right: 'w'}}},
+            form2: {left: {op: 'var', left: 0, right: 'x'}, op: 'or', right: {op: 'var', left: 0, right: 'z'}},
+            result: {left: {op: 'var', left: 0, right: 'y'}, op: 'or', right: {op: 'var', left: 0, right: 'w'}}
+          }
+        ],
+        Conj: [
+          {
+            form1: {left: 0, op: 'var', right: 'x'},
+            form2: {left: 0, op: 'var', right: 'y'},
+            result: {left: {left: 0, op: 'var', right: 'x'}, op: 'and', right: {left: 0, op: 'var', right: 'y'}}
+          }
+        ]
+      };
       var statements = {};
       var ids = [null];
       var premisOL = document.getElementById('prems');
@@ -134,20 +197,6 @@
           }
         }
       };
-      var checkempty = function() {
-        var txt;
-        var nodes = premisOL.children;
-        for (var i = 0; i < nodes.length; i++) {
-          txt = nodes[i].children[0].value;
-          if (txt == '') {
-            nodes[i].className = 'empty';
-          } else if (parsestatement(txt) != -1) {
-            nodes[i].className = 'full';
-          } else {
-            nodes[i].className = 'bad';
-          }
-        }
-      };
       var fixnums = function() {
         statementOL.setAttribute('start', premisOL.children.length + 1);
       };
@@ -185,30 +234,171 @@
         document.getElementById('prem').value = parseInt(document.getElementById('prem').value) + n;
         fixnums();
       };
-      var updatestatements = function(ol) {
+      var parserule = function(r, id) {
+        if (r == 'ACP' || r == 'AIP') {
+          var prev = statements[ids.indexOf(id)-1];
+          if (_.isEqual(prev.path, statements[id].path.slice(0,-1))) {
+            return {rule: r, lines: []};
+          } else {
+            return -1;
+          }
+        }
+        var m = r.match(/^\s*(\d+),?\s*([A-Z]+)\s*$/);
+        if (m) {
+          if (m[2] in rules1) {
+            return {rule: m[2], lines: [ids[parseInt(m[1])]]};
+          } else {
+            return -1;
+          }
+        }
+        m = r.match(/^\s*(\d+),\s*(\d+),?\s*([A-Z]+)\s*$/);
+        if (m) {
+          if (m[3] in rules2) {
+            return {rule: m[3], lines: [ids[parseInt(m[1])], names[parseInt(m[1])]]};
+          } else {
+            return -1;
+          }
+        }
+        m = r.match(/^\s*(\d+)\s*-\s*(\d+),?\s*(CP|IP)\s*$/);
+        if (m) {
+          var s = parseInt(m[1]);
+          var e = parseInt(m[2]);
+          if (e >= s) {
+            return -1;
+          }
+          if (e != ids.indexOf(id)-1) {
+            return -1;
+          }
+          if (s > 1 && !_.isEqual(statements[ids[s]].path.slice(0,-1), statements[ids[s-1]].path)) {
+            return -1;
+          }
+          if (!_.isEqual(statements[ids[e]].path.slice(0,-1), statements[id].path)) {
+            return -1;
+          }
+          return {rule: m[3], lines: [ids[s], ids[e]]};
+        }
+        return -1;
+      };
+      var updatestatements = function(ol, path) {
         var sv;
         var rv;
         var p;
+        var node;
         for (var i = 0; i < ol.children.length; i++) {
-          if (ol.children[i].tagName == 'ol') {
-            updatestatements(ol.children[i]);
+          node = ol.children[i];
+          if (node.tagName == 'ol') {
+            updatestatements(node, path.concat(node.id));
           } else {
-            sv = _.trim(ol.children[i].children[0].value);
-            rv = _.trim(ol.children[i].children[1].value);
+            sv = _.trim(node.children[0].value);
+            rv = _.trim(node.children[1].value);
             if (sv == '') {
-              ol.children[i].className = 'empty';
-            } else if (!rv.match(/^(\d+|\d+-\d+|\d+,?\s*\d+,?)\s*[A-Z]+$/)) {
-              ol.children[i].className = 'badrule';
+              node.className = 'empty';
+            } else if (parserule(rv) == -1) {
+              node.className = 'badrule';
             } else {
               p = parsestatement(sv);
-              if (p == -1) {
-                ol.children[i].className = 'bad';
-                statements[ol.children[i].id] = {value: -1, from: rv};
-              } else {
-                statements[ol.children[i].id] = {value: p, from: rv};
-                ol.children[i].className = 'full';
+              statements[node.id] = {value: p, from: parserule(rv, node.id), path: path};
+              node.className = (p == -1 ? 'bad' : 'full');
+            }
+          }
+        }
+      };
+      var matchpat = function(obj, pat, vars) {
+        if (pat.op == 'var') {
+          if (pat.right in vars) {
+            if (!_.isEqual(obj, vars[pat.right])) {
+              vars.ok = false;
+            }
+            return vars;
+          }
+          vars[pat.right] = obj;
+          return vars;
+        } else if (_.isEqual(obj, pat)) {
+          return vars;
+        } else {
+          if (obj.hasOwnProperty('left') && pat.hasOwnProperty('left')) {
+            vars = matchpat(obj.left, pat.left, vars);
+            vars = matchpat(obj.op, pat.op, vars);
+            vars = matchpat(obj.right, pat.right, vars);
+            return vars;
+          }
+        }
+        vars.ok = false;
+        return vars;
+      };
+      var checkrule = function(inputs, output, forms, result, nested) {
+        //nested indicates that a 1-line rule may be only partial, or that a 2-line rule is to be applied backwards.
+        if (inputs.length == 2) {
+          var vars = matchpat(inputs[0], forms[0], {ok: true});
+          if (vars.ok) {
+            vars = matchpat(inputs[1], forms[1], vars);
+            if (vars.ok) {
+              vars = matchpat(output, restult, vars);
+            }
+          }
+          if (!vars.ok && !nested) {
+            return checkrule([inputs[1], inputs[0]], output, forms, result, true);
+          }
+          return vars.ok;
+        } else { //just 1
+          var vars = matchpat(inputs[0], forms[0], {ok: true});
+          if (vars.ok) {
+            vars = matchpat(output, result, vars);
+          }
+          if (!vars.ok && nested) {
+            if (inputs[0].hasOwnProperty('left') && inputs[0].op == output.op) {
+              var nes = checkrule([inputs[0].left], output.left, forms, result, nested);
+              if (nes) {
+                vars = matchpat(inputs[0].right, output.right, {ok: true});
+                if (vars.ok) {
+                  return true;
+                }
+              }
+              nes = checkrule([inputs[0].right], output.right, forms, result, nested);
+              if (nes) {
+                vars = matchpat(inputs[0].left, output.left, {ok: true});
+                if (vars.ok) {
+                  return true;
+                }
               }
             }
+          }
+          return vars.ok;
+        }
+      };
+      var isokline = function(id) {
+        var n = document.getElementById(id);
+        return n && (n.className == 'full' || s.className == 'invalid')
+      };
+      var validate = function() {
+        var node, s, vars, rule, id;
+        for (var i = 1; i < ids.length; i++) {
+          id = ids[i];
+          node = document.getElementById(id);
+          s = statements[id];
+          if (node.className == 'full' && s.from != 'premis') {
+            node.className = 'invalid';
+            if (s.from.rule in rules1 && isokline(s.from.lines[0])) {
+              rule = rules1[s.from.rule];
+              for (var i = 0; i < rule.length; i++) {
+                if (checkrule([statements[s.from.lines[0]].value], s.value, [rule[i].form], rule[i].result, rule[1].nest)) {
+                  node.className = 'full';
+                  break;
+                }
+              }
+            } else {
+              if (isokline(s.from.lines[0]) && isokline(s.from.lines[1])) {
+                rule = rules2[s.from.rule];
+                for (var i = 0; i < rule.length; i++) {
+                  if (checkrule([statements[s.from.lines[0]].value, statements[s.from.lines[1]].value], s.value, [rule[i].form1, rule[i].form2], rule[i].result, false)) {
+                    node.className = 'full';
+                    break;
+                  }
+                }
+              }
+            }
+            //check this line
+            //mark as invalid if either line referred to isn't .full or .invalid
           }
         }
       };
@@ -226,15 +416,16 @@
             s = parsestatement(v);
             if (s == -1) {
               p.className = 'bad';
-              statements[p.id] = {value: -1, from: 'premis'};
+              statements[p.id] = {value: -1, from: 'premis', path: ['main']};
             } else {
               p.className = 'full';
-              statements[p.id] = {value: s, from: 'premis'};
+              statements[p.id] = {value: s, from: 'premis', path: ['main']};
             }
           }
           ids.push(p.id);
         }
-        updatestatements(statementOL);
+        updatestatements(statementOL, ['main']);
+        validate();
       };
       makeprem();
       makestate();
