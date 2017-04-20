@@ -1,0 +1,176 @@
+<html>
+  <head>
+    <title>Proof-Checker</title>
+    <meta charset="UTF-8" />
+    <script src="lodash.js"></script>
+  </head>
+  <body>
+    <span>Number of Premises:</span>
+    <input type="number" value="1" id="prem" onchange="addprem();"></input>
+    <ol id="prems"></ol>
+    <hr>
+    <ol id="proof"></ol>
+    <script>
+      var cor = "∨";
+      var cand = "∙";
+      var cnot = "~";
+      var cthen = "⊃";
+      var cbicond = "≡";
+      var cexists = "∃";
+      var statements = {};
+      var premisOL = document.getElementById('prems');
+      var statementOL = document.getElementById('proof');
+      var idnum = 0;
+      var parsestatement = function(s) {
+        var ret = {left: null, right: null, op: null};
+        var path = ['left'];
+        var cur = "";
+        var c;
+        for (var i = 0; i < s.length; i++) {
+          c = s[i];
+          switch (c) {
+            case ' ': break;
+            case '~':
+              _.set(ret, path, {left: 0, right: null, op: 'not'});
+              path.push('right');
+              break;
+            case '(':
+              _.set(ret, path, {left: null, right: null, op: null});
+              path.push('left');
+              break;
+            case ')':
+              if (path[path.length-1] != 'right') {
+                return -1;
+              } else {
+                path.pop();
+                if (path[path.length-1] == 'left') {
+                  path.pop();
+                  path.push('op');
+                }
+              }
+              break;
+            case cor:
+              if (path[path.length-1] != 'op') {
+                return -1;
+              } else {
+                _.set(ret, path, 'or');
+                path.pop();
+                path.push('right');
+              }
+              break;
+            case cand:
+              if (path[path.length-1] != 'op') {
+                return -1;
+              } else {
+                _.set(ret, path, 'and');
+                path.pop();
+                path.push('right');
+              }
+              break;
+            case cbicond:
+              if (path[path.length-1] != 'op') {
+                return -1;
+              } else {
+                _.set(ret, path, 'bicond');
+                path.pop();
+                path.push('right');
+              }
+              break;
+            case cthen:
+              if (path[path.length-1] != 'op') {
+                return -1;
+              } else {
+                _.set(ret, path, 'implies');
+                path.pop();
+                path.push('right');
+              }
+              break;
+            default:
+              _.set(ret, path, (_.result(ret, path) || '') + c);
+          }
+        }
+        return clean(ret);
+      };
+      var clean = function(s) {
+        if (s.hasOwnProperty('right')) {
+          if (s.op == null && s.right == null) {
+            return clean(s.left);
+          } else {
+            var l = clean(s.left);
+            var o = clean(s.op);
+            var r = clean(s.right);
+            if (l != -1 && o != -1 && r != -1) {
+              return {left: l, op: o, right: r};
+            } else {
+              return -1;
+            }
+          }
+        } else {
+          if (s == null) {
+            return -1;
+          } else {
+            return s;
+          }
+        }
+      };
+      var checkempty = function() {
+        var txt;
+        var val;
+        var id;
+        var nodes = premisOL.children;
+        for (var i = 0; i < nodes.length; i++) {
+          txt = nodes[i].children[0].value;
+          id = nodes[i].children
+          if (txt == '') {
+            val = 'empty';
+          } else if (parsestatement(txt) != -1) {
+            val = 'full';
+          } else {
+            val = 'bad';
+          }
+          //nodes[i].setAttribute('data-empty', val);
+          nodes[i].className = val;
+        }
+      };
+      var fixnums = function() {
+        statementOL.setAttribute('start', premisOL.children.length + 1);
+      };
+      var makeprem = function() {
+        var n = document.createElement('li');
+        n.innerHTML = '<input type="text">';
+        n.id = 'n' + idnum;
+        premisOL.appendChild(n);
+        idnum++;
+        fixnums();
+      };
+      var makestate = function() {
+        var n = document.createElement('li');
+        n.innerHTML = '<input type="text"><input type="text">';
+        n.id = 'n' + idnum;
+        statementOL.appendChild(n);
+        idnum++;
+      };
+      var addprem = function() {
+        var n = premisOL.children.length - parseInt(document.getElementById('prem').value);
+        while (n < 0) {
+          makeprem();
+          n++;
+        }
+        checkempty();
+        var em = document.getElementsByClassName('empty');
+        var emct = 0;
+        while (n > 0 && emct < em.length) {
+          if (em[emct].parentNode) {
+            em[emct].parentNode.removeChild(em[emct]);
+            n--;
+          }
+          emct++;
+        }
+        document.getElementById('prem').value = parseInt(document.getElementById('prem').value) + n;
+        fixnums();
+      };
+      makeprem();
+      makestate();
+    </script>
+  </body>
+</html>
