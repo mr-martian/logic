@@ -3,21 +3,47 @@
     <title>Proof-Checker</title>
     <meta charset="UTF-8" />
     <script src="lodash.js"></script>
+    <style>
+      .full {}
+      .empty {
+        background: gray;
+      }
+      .bad {
+        background: pink;
+      }
+      .invalid {
+        background: red;
+      }
+      .badrule {
+        background: purple;
+      }
+    </style>
   </head>
   <body>
     <span>Number of Premises:</span>
     <input type="number" value="1" id="prem" onchange="addprem();"></input>
+    <button onclick="update();">Check Proof</button>
+    <span>Key:</span>
+    <span class="full">Correct</span>
+    <span class="empty">Empty</span>
+    <span class="bad">Badly formed input</span>
+    <span class="badrule">Badly formed rule</span>
+    <span class="invalid">Invalid line</span>
     <ol id="prems"></ol>
     <hr>
     <ol id="proof"></ol>
+    <button onclick="makestate();">Add Statement</button>
     <script>
       var cor = "∨";
       var cand = "∙";
       var cnot = "~";
       var cthen = "⊃";
       var cbicond = "≡";
+      var names = {};
+      names[cand] = 'and'; names[cor] = 'or'; names[cthen] = 'implies'; names[cbicond] = 'bicond';
       var cexists = "∃";
       var statements = {};
+      var ids = [null];
       var premisOL = document.getElementById('prems');
       var statementOL = document.getElementById('proof');
       var idnum = 0;
@@ -29,16 +55,24 @@
         for (var i = 0; i < s.length; i++) {
           c = s[i];
           switch (c) {
-            case ' ': break;
+            case ' ':
+              if (path[path.length-1] == 'left') {
+                path.pop();
+                path.push('op');
+              } break;
             case '~':
               _.set(ret, path, {left: 0, right: null, op: 'not'});
               path.push('right');
               break;
+            case '{':
+            case '[':
             case '(':
               _.set(ret, path, {left: null, right: null, op: null});
               path.push('left');
               break;
             case ')':
+            case ']':
+            case '}':
               if (path[path.length-1] != 'right') {
                 return -1;
               } else {
@@ -50,52 +84,37 @@
               }
               break;
             case cor:
-              if (path[path.length-1] != 'op') {
-                return -1;
-              } else {
-                _.set(ret, path, 'or');
-                path.pop();
-                path.push('right');
-              }
-              break;
             case cand:
-              if (path[path.length-1] != 'op') {
-                return -1;
-              } else {
-                _.set(ret, path, 'and');
-                path.pop();
-                path.push('right');
-              }
-              break;
             case cbicond:
-              if (path[path.length-1] != 'op') {
-                return -1;
-              } else {
-                _.set(ret, path, 'bicond');
-                path.pop();
-                path.push('right');
-              }
-              break;
             case cthen:
-              if (path[path.length-1] != 'op') {
+              if (path[path.length-1] == 'right') {
                 return -1;
-              } else {
-                _.set(ret, path, 'implies');
-                path.pop();
-                path.push('right');
               }
+              if (path[path.length-1] == 'left') {
+                path.pop();
+                path.push('op');
+              }
+              _.set(ret, path, names[c]);
+              path.pop();
+              path.push('right');
               break;
             default:
-              _.set(ret, path, (_.result(ret, path) || '') + c);
+              if (path[path.length-1] != 'op' && typeof(_.result(ret, path)) == 'string') {
+                _.set(ret, path, (_.result(ret, path) || '') + c);
+              } else if (path[path.length-1] != 'op' && _.result(ret, path) == null) {
+                _.set(ret, path, c);
+              } else {
+                return -1;
+              }
           }
         }
         return clean(ret);
       };
       var clean = function(s) {
         if (s.hasOwnProperty('right')) {
-          if (s.op == null && s.right == null) {
+          if (s.op == null && s.right == null && s.left != null) {
             return clean(s.left);
-          } else {
+          } else if (s.op != null && s.right != null && s.left != null) {
             var l = clean(s.left);
             var o = clean(s.op);
             var r = clean(s.right);
@@ -104,6 +123,8 @@
             } else {
               return -1;
             }
+          } else {
+            return -1;
           }
         } else {
           if (s == null) {
@@ -115,21 +136,16 @@
       };
       var checkempty = function() {
         var txt;
-        var val;
-        var id;
         var nodes = premisOL.children;
         for (var i = 0; i < nodes.length; i++) {
           txt = nodes[i].children[0].value;
-          id = nodes[i].children
           if (txt == '') {
-            val = 'empty';
+            nodes[i].className = 'empty';
           } else if (parsestatement(txt) != -1) {
-            val = 'full';
+            nodes[i].className = 'full';
           } else {
-            val = 'bad';
+            nodes[i].className = 'bad';
           }
-          //nodes[i].setAttribute('data-empty', val);
-          nodes[i].className = val;
         }
       };
       var fixnums = function() {
@@ -156,7 +172,7 @@
           makeprem();
           n++;
         }
-        checkempty();
+        update();
         var em = document.getElementsByClassName('empty');
         var emct = 0;
         while (n > 0 && emct < em.length) {
@@ -166,7 +182,59 @@
           }
           emct++;
         }
+        document.getElementById('prem').value = parseInt(document.getElementById('prem').value) + n;
         fixnums();
+      };
+      var updatestatements = function(ol) {
+        var sv;
+        var rv;
+        var p;
+        for (var i = 0; i < ol.children.length; i++) {
+          if (ol.children[i].tagName == 'ol') {
+            updatestatements(ol.children[i]);
+          } else {
+            sv = _.trim(ol.children[i].children[0].value);
+            rv = _.trim(ol.children[i].children[1].value);
+            if (sv == '') {
+              ol.children[i].className = 'empty';
+            } else if (!rv.match(/^(\d+|\d+-\d+|\d+,?\s*\d+,?)\s*[A-Z]+$/)) {
+              ol.children[i].className = 'badrule';
+            } else {
+              p = parsestatement(sv);
+              if (p == -1) {
+                ol.children[i].className = 'bad';
+                statements[ol.children[i].id] = {value: -1, from: rv};
+              } else {
+                statements[ol.children[i].id] = {value: p, from: rv};
+                ol.children[i].className = 'full';
+              }
+            }
+          }
+        }
+      };
+      var update = function() {
+        ids = [null];
+        var p;
+        var v;
+        var s;
+        for (var i = 0; i < premisOL.children.length; i++) {
+          p = premisOL.children[i];
+          v = _.trim(p.children[0].value);
+          if (v == '') {
+            p.className = 'empty';
+          } else {
+            s = parsestatement(v);
+            if (s == -1) {
+              p.className = 'bad';
+              statements[p.id] = {value: -1, from: 'premis'};
+            } else {
+              p.className = 'full';
+              statements[p.id] = {value: s, from: 'premis'};
+            }
+          }
+          ids.push(p.id);
+        }
+        updatestatements(statementOL);
       };
       makeprem();
       makestate();
