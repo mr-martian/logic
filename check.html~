@@ -35,12 +35,15 @@
       <input type="radio" name="inputmode" id="uni" checked="checked"></input>
       <label for="uni">or: ∨ and: ∙ not: ~ implies: ⊃ biconditional: ≡</label>
       <br>
-      <input type="radio" name="inputmode" id="asc" onchange="swapchars();">or: ^ and: & not: ~ implies: > biconditional: =</input>
+      <input type="radio" name="inputmode" id="asc" onchange="swapchars();"></input>
+      <label for="asc">or: ^ and: & not: ~ implies: > biconditional: =</label>
     </div>
     <ol id="prems"></ol>
     <hr>
     <ol id="proof"></ol>
     <button onclick="makestate();">Add Statement</button>
+    <button onclick="beginsubproof();">Add CP or IP</button>
+    <button onclick="endsubproof();">End current CP or IP</button>
     <div id="qdiv">
       <textarea id="quick"></textarea>
       <button onclick="fromquick();">Parse</button>
@@ -106,7 +109,17 @@
             case cbicond:
             case cthen:
               if (path[path.length-1] == 'right') {
-                return -1;
+                //if it's set to right, that's a syntax error,
+                //unless the last operator was "not"
+                path.pop();
+                path.push('op');
+                if (_.result(ret, path) == 'not') {
+                  path.pop();
+                  i--;
+                  break;
+                } else {
+                  return -1;
+                }
               }
               if (path[path.length-1] == 'left') {
                 path.pop();
@@ -168,16 +181,16 @@
           }
         ],
       };
+      var tovar = function(tr) {
+        if (typeof(tr) == 'string') {
+          return {left: 0, op: 'var', right: tr};
+        } else if (tr.hasOwnProperty('left')) {
+          return {left: tovar(tr.left), op: tr.op, right: tovar(tr.right)};
+        } else {
+          return tr;
+        }
+      };
       var makeequiv = function(rulename, stringlist, nest) {
-        var tovar = function(tr) {
-          if (typeof(tr) == 'string') {
-            return {left: 0, op: 'var', right: tr};
-          } else if (tr.hasOwnProperty('left')) {
-            return {left: tovar(tr.left), op: tr.op, right: tovar(tr.right)};
-          } else {
-            return tr;
-          }
-        };
         var l = [];
         var s1, s2;
         for (var i = 0; i < stringlist.length; i++) {
@@ -245,7 +258,11 @@
         ]
       };
       var fixnums = function() {
-        statementOL.setAttribute('start', premisOL.children.length + 1);
+        //statementOL.setAttribute('start', premisOL.children.length + 1);
+        var l = document.getElementsByTagName('li');
+        for (var i = 0; i < l.length; i++) {
+          l[i].value = ids.indexOf(l[i].id);
+        }
       };
       var makeprem = function(value) {
         var n = document.createElement('li');
@@ -253,14 +270,69 @@
         n.id = 'n' + idnum;
         premisOL.appendChild(n);
         idnum++;
-        fixnums();
       };
-      var makestate = function(s, r) {
+      var getlastOL = function(node) {
+        if (node.lastChild && node.lastChild.tagName == 'OL') {
+          return node.lastChild;
+        } else {
+          return node;
+        }
+      };
+      var makestate = function(s, r, unindent) {
         var n = document.createElement('li');
         n.innerHTML = '<input type="text"' + (s ? 'value="'+s+'"' : '') + '></input><input type="text"' + (r ? 'value="'+r+'"' : '') + '></input>';
         n.id = 'n' + idnum;
-        statementOL.appendChild(n);
+        if (unindent) {
+          getlastOL(statementOL).parentNode.appendChild(n);
+        } else {
+          getlastOL(statementOL).appendChild(n);
+        }
         idnum++;
+      };
+      var indentcount = 0;
+      var beginsubproof = function(s, r) {
+        var el = document.createElement('ol');
+        el.id = 'p' + indentcount;
+        getlastOL(statementOL).appendChild(el);
+        makestate(s, r, false);
+        update();
+      }
+      var tostring = function(obj) {
+        if (obj.hasOwnProperty('left')) {
+          if (obj.op == 'not') {
+            return cnot + tostring(obj.right);
+          } else if (obj.op == 'var') {
+            return obj.right;
+          } else {
+            var s = tostring(obj.left) + _.findKey(names, _.matches(obj.op)) + tostring(obj.right);
+            var p1 = s[0];
+            var p2 = s[s.length-1];
+            if (p1 == '{' || p2 == '}') {
+              return '(' + s + ')';
+            } else if (p1 == '[' || p2 == ']') {
+              return '{' + s + '}';
+            } else if (p1 == '(' || p2 == ')') {
+              return '[' + s + ']';
+            } else {
+              return '(' + s + ')';
+            }
+          }
+        } else {
+          return obj;
+        }
+      };
+      var endsubproof = function() {
+        update();
+        var ol = getlastOL(statementOL);
+        if (ol.id != 'proof') {
+          var l1 = ol.firstChild.id;
+          var l2 = ol.lastChild.id;
+          if (statements[l1].from.rule == 'ACP') {
+            makestate(tostring({left: statements[l1].value, op: 'implies', right: statements[l2].value}), ids.indexOf(l1) + '-' + ids.indexOf(l2) + ' CP', true);
+          } else if (statements[l1].from.rule == 'AIP') {
+            makestate(tostring({left: 0, op: 'not', right: statements[l1].value}), ids.indexOf(l1) + '-' + ids.indexOf(l2) + ' IP', true);
+          }
+        }
       };
       var addprem = function() {
         var n = premisOL.children.length - parseInt(document.getElementById('prem').value);
@@ -281,10 +353,11 @@
         document.getElementById('prem').value = parseInt(document.getElementById('prem').value) + n;
         fixnums();
       };
-      var parserule = function(r, id) {
+      var parserule = function(r, id, path) {
         if (r == 'ACP' || r == 'AIP') {
-          var prev = statements[ids.indexOf(id)-1];
-          if (_.isEqual(prev.path, statements[id].path.slice(0,-1))) {
+          var prev = statements[ids[ids.indexOf(id)-1]];
+          console.log([r, id, prev, statements[id], statements]);
+          if (_.isEqual(prev.path, path.slice(0,-1))) {
             return {rule: r, lines: []};
           } else {
             return -1;
@@ -301,7 +374,7 @@
         m = r.match(/^\s*(\d+),\s*(\d+),?\s*([A-Za-z]+)\s*$/);
         if (m) {
           if (m[3] in rules2) {
-            return {rule: m[3], lines: [ids[parseInt(m[1])], names[parseInt(m[1])]]};
+            return {rule: m[3], lines: [ids[parseInt(m[1])], ids[parseInt(m[2])]]};
           } else {
             return -1;
           }
@@ -310,7 +383,7 @@
         if (m) {
           var s = parseInt(m[1]);
           var e = parseInt(m[2]);
-          if (e >= s) {
+          if (e <= s) {
             return -1;
           }
           if (e != ids.indexOf(id)-1) {
@@ -319,7 +392,8 @@
           if (s > 1 && !_.isEqual(statements[ids[s]].path.slice(0,-1), statements[ids[s-1]].path)) {
             return -1;
           }
-          if (!_.isEqual(statements[ids[e]].path.slice(0,-1), statements[id].path)) {
+          console.log([statements, ids, s, e, ids[e], statements[ids[e]]]);
+          if (!_.isEqual(statements[ids[e]].path.slice(0,-1), path)) {
             return -1;
           }
           return {rule: m[3], lines: [ids[s], ids[e]]};
@@ -327,26 +401,25 @@
         return -1;
       };
       var updatestatements = function(ol, path) {
-        var sv;
-        var rv;
-        var p;
-        var node;
+        var sv, rv, p, node, rule;
         var text = document.getElementById('quick');
         for (var i = 0; i < ol.children.length; i++) {
           node = ol.children[i];
-          if (node.tagName == 'ol') {
+          if (node.tagName == 'OL') {
             updatestatements(node, path.concat(node.id));
           } else {
+            ids.push(node.id);
             sv = _.trim(node.children[0].value);
             rv = _.trim(node.children[1].value);
             text.value += sv + '\t' + rv + '\n';
+            rule = parserule(rv, node.id, path);
             if (sv == '') {
               node.className = 'empty';
-            } else if (parserule(rv) == -1) {
+            } else if (rule == -1) {
               node.className = 'badrule';
             } else {
               p = parsestatement(sv);
-              statements[node.id] = {value: p, from: parserule(rv, node.id), path: path};
+              statements[node.id] = {value: p, from: rule, path: path};
               node.className = (p == -1 ? 'bad' : 'full');
             }
           }
@@ -382,7 +455,7 @@
           if (vars.ok) {
             vars = matchpat(inputs[1], forms[1], vars);
             if (vars.ok) {
-              vars = matchpat(output, restult, vars);
+              vars = matchpat(output, result, vars);
             }
           }
           if (!vars.ok && !nested) {
@@ -417,7 +490,7 @@
       };
       var isokline = function(id) {
         var n = document.getElementById(id);
-        return n && (n.className == 'full' || s.className == 'invalid')
+        return n && (n.className == 'full' || n.className == 'invalid')
       };
       var validate = function() {
         var node, s, vars, rule, id;
@@ -429,17 +502,33 @@
             node.className = 'invalid';
             if (s.from.rule in rules1 && isokline(s.from.lines[0])) {
               rule = rules1[s.from.rule];
-              for (var i = 0; i < rule.length; i++) {
-                if (checkrule([statements[s.from.lines[0]].value], s.value, [rule[i].form], rule[i].result, rule[1].nest)) {
+              for (var j = 0; j < rule.length; j++) {
+                if (checkrule([statements[s.from.lines[0]].value], s.value, [rule[j].form], rule[j].result, rule[j].nest)) {
                   node.className = 'full';
                   break;
                 }
               }
+            } else if (s.from.rule == 'CP') {
+              if (isokline(s.from.lines[0]) && isokline(s.from.lines[1])) {
+                if (checkrule([statements[s.from.lines[0]].value, statements[s.from.lines[1]].value], s.value,
+                              [tovar(parsestatement('x')), tovar(parsestatement('y'))], tovar(parsestatement('x' + cthen + 'y')))) {
+                  node.className = 'full';
+                }
+              }
+            } else if (s.from.rule == 'IP') {
+              if (isokline(s.from.lines[0]) && isokline(s.from.lines[1])) {
+                if (checkrule([statements[s.from.lines[0]].value, statements[s.from.lines[1]].value], s.value,
+                              [tovar(parsestatement('x')), tovar(parsestatement('y' + cand + cnot + 'y'))], tovar(parsestatement(cnot + 'x')))) {
+                  node.className = 'full';
+                }
+              }
+            } else if (s.from.rule == 'ACP' || s.from.rule == 'AIP') {
+              node.className = 'full';
             } else {
               if (isokline(s.from.lines[0]) && isokline(s.from.lines[1])) {
                 rule = rules2[s.from.rule];
-                for (var i = 0; i < rule.length; i++) {
-                  if (checkrule([statements[s.from.lines[0]].value, statements[s.from.lines[1]].value], s.value, [rule[i].form1, rule[i].form2], rule[i].result, false)) {
+                for (var j = 0; j < rule.length; j++) {
+                  if (checkrule([statements[s.from.lines[0]].value, statements[s.from.lines[1]].value], s.value, [rule[j].form1, rule[j].form2], rule[j].result, false)) {
                     node.className = 'full';
                     break;
                   }
@@ -464,6 +553,7 @@
           text.value += v + '\n';
           if (v == '') {
             p.className = 'empty';
+            statements[p.id] = {value: -1, from: 'premis', path: ['main']};
           } else {
             s = parsestatement(v);
             if (s == -1) {
@@ -478,6 +568,7 @@
         }
         updatestatements(statementOL, ['main']);
         validate();
+        fixnums();
       };
       var showhide = function() {
         var text = document.getElementById('qdiv');
@@ -509,14 +600,21 @@
           makeprem(plist[p]);
         }
         for (var s = 0; s < slist.length; s++) {
-          makestate(slist[s][0], slist[s][1]);
+          if (slist[s][1].match('A[CI]P')) {
+            beginsubproof(slist[s][0], slist[s][1]);
+          } else if (slist[s][1].match('[CI]P')) {
+            makestate(slist[s][0], slist[s][1], true);
+          } else {
+            makestate(slist[s][0], slist[s][1], false);
+          }
         }
-        fixnums();
+        //fixnums();
         update();
       };
       showhide();
       makeprem();
-      makestate();
+      //makestate();
+      update();
     </script>
   </body>
 </html>
