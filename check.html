@@ -36,6 +36,11 @@
     <hr>
     <ol id="proof"></ol>
     <button onclick="makestate();">Add Statement</button>
+    <div id="qdiv">
+      <textarea id="quick"></textarea>
+      <button onclick="fromquick();">Parse</button>
+    </div>
+    <button onclick="showhide();">Show/Hide textbox</button>
     <script>
       var cor = "∨";
       var cand = "∙";
@@ -45,66 +50,6 @@
       var names = {};
       names[cand] = 'and'; names[cor] = 'or'; names[cthen] = 'implies'; names[cbicond] = 'bicond';
       var cexists = "∃";
-      var rules1 = {
-        DN: [
-          {
-            form: {left: 0, op: 'not', right: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}}},
-            result: {op: 'var', left: 0, right: 'x'},
-            nest: true
-          },
-          {
-            result: {left: 0, op: 'not', right: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}}},
-            form: {op: 'var', left: 0, right: 'x'},
-            nest: true
-          }
-        ]
-      };
-      var rules2 = {
-        MP: [
-          {
-            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
-            form2: {op: 'var', left: 0, right: 'x'},
-            result: {op: 'var', left: 0, right: 'y'}
-          }
-        ],
-        MT: [
-          {
-            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
-            form2: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'y'}},
-            result: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}}
-          }
-        ],
-        HS: [
-          {
-            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
-            form2: {left: {op: 'var', left: 0, right: 'y'}, op: 'implies', right: {op: 'var', left: 0, right: 'z'}},
-            result: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'z'}}
-          }
-        ],
-        DS: [
-          {
-            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'or', right: {op: 'var', left: 0, right: 'y'}},
-            form2: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}},
-            result: {op: 'var', left: 0, right: 'y'}
-          }
-        ],
-        CD: [
-          {
-            form1: {left: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
-                    op: 'and',
-                    right: {left: {op: 'var', left: 0, right: 'z'}, op: 'implies', right: {op: 'var', left: 0, right: 'w'}}},
-            form2: {left: {op: 'var', left: 0, right: 'x'}, op: 'or', right: {op: 'var', left: 0, right: 'z'}},
-            result: {left: {op: 'var', left: 0, right: 'y'}, op: 'or', right: {op: 'var', left: 0, right: 'w'}}
-          }
-        ],
-        Conj: [
-          {
-            form1: {left: 0, op: 'var', right: 'x'},
-            form2: {left: 0, op: 'var', right: 'y'},
-            result: {left: {left: 0, op: 'var', right: 'x'}, op: 'and', right: {left: 0, op: 'var', right: 'y'}}
-          }
-        ]
-      };
       var statements = {};
       var ids = [null];
       var premisOL = document.getElementById('prems');
@@ -197,20 +142,112 @@
           }
         }
       };
+      var rules1 = {
+        Add: [
+          {
+            result: {left: {op: 'var', left: 0, right: 'x'}, op: 'or', right: {op: 'var', left: 0, right: 'y'}},
+            form: {op: 'var', left: 0, right: 'x'},
+            nest: false
+          }
+        ],
+        Simp: [
+          {
+            form: {left: {op: 'var', left: 0, right: 'x'}, op: 'and', right: {op: 'var', left: 0, right: 'y'}},
+            form: {op: 'var', left: 0, right: 'x'},
+            nest: false
+          }
+        ],
+      };
+      var makeequiv = function(rulename, stringlist, nest) {
+        var tovar = function(tr) {
+          if (typeof(tr) == 'string') {
+            return {left: 0, op: 'var', right: tr};
+          } else if (tr.hasOwnProperty('left')) {
+            return {left: tovar(tr.left), op: tr.op, right: tovar(tr.right)};
+          } else {
+            return tr;
+          }
+        };
+        var l = [];
+        var s1, s2;
+        for (var i = 0; i < stringlist.length; i++) {
+          s1 = tovar(parsestatement(stringlist[i][0]));
+          s2 = tovar(parsestatement(stringlist[i][1]));
+          l.push({form: s1, result: s2, nest: nest});
+          l.push({form: s2, result: s1, nest: nest});
+        }
+        rules1[rulename] = l;
+      };
+      makeequiv('DN', [['~~x', 'x']], true);
+      makeequiv('DM', [['~(p∙q)', '~p∨~q'], ['~(p∨q)', '~p∙~q']], true);
+      makeequiv('Com', [['p∨q', 'q∨p'], ['p∙q', 'q∙p']], true);
+      makeequiv('Assoc', [['p∨(q∨r)', '(p∨q)∨r'], ['p∙(q∙r)', '(p∙q)∙r']], true);
+      makeequiv('Dist', [['p∨(q∙r)', '(p∨q)∙(p∨r)'], ['p∙(q∨r)', '(p∙q)∨(p∙r)']], true);
+      makeequiv('Trans', [['p⊃q', '~q⊃~p']], true);
+      makeequiv('Impl', [['p⊃q', '~p∨q']], true);
+      makeequiv('Equiv', [['p≡q', '(p⊃q)∙(q⊃p)'], ['p≡q', '(p∙q)∨(~p∙~q)']], true);
+      makeequiv('Exp', [['(p∙q)⊃r', 'p⊃(q⊃r)']], true);
+      makeequiv('Taut', [['p', 'p∙p'], ['p', 'p∨p']], true);
+      var rules2 = {
+        MP: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {op: 'var', left: 0, right: 'x'},
+            result: {op: 'var', left: 0, right: 'y'}
+          }
+        ],
+        MT: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'y'}},
+            result: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}}
+          }
+        ],
+        HS: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {left: {op: 'var', left: 0, right: 'y'}, op: 'implies', right: {op: 'var', left: 0, right: 'z'}},
+            result: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'z'}}
+          }
+        ],
+        DS: [
+          {
+            form1: {left: {op: 'var', left: 0, right: 'x'}, op: 'or', right: {op: 'var', left: 0, right: 'y'}},
+            form2: {left: 0, op: 'not', right: {op: 'var', left: 0, right: 'x'}},
+            result: {op: 'var', left: 0, right: 'y'}
+          }
+        ],
+        CD: [
+          {
+            form1: {left: {left: {op: 'var', left: 0, right: 'x'}, op: 'implies', right: {op: 'var', left: 0, right: 'y'}},
+                    op: 'and',
+                    right: {left: {op: 'var', left: 0, right: 'z'}, op: 'implies', right: {op: 'var', left: 0, right: 'w'}}},
+            form2: {left: {op: 'var', left: 0, right: 'x'}, op: 'or', right: {op: 'var', left: 0, right: 'z'}},
+            result: {left: {op: 'var', left: 0, right: 'y'}, op: 'or', right: {op: 'var', left: 0, right: 'w'}}
+          }
+        ],
+        Conj: [
+          {
+            form1: {left: 0, op: 'var', right: 'x'},
+            form2: {left: 0, op: 'var', right: 'y'},
+            result: {left: {left: 0, op: 'var', right: 'x'}, op: 'and', right: {left: 0, op: 'var', right: 'y'}}
+          }
+        ]
+      };
       var fixnums = function() {
         statementOL.setAttribute('start', premisOL.children.length + 1);
       };
-      var makeprem = function() {
+      var makeprem = function(value) {
         var n = document.createElement('li');
-        n.innerHTML = '<input type="text">';
+        n.innerHTML = '<input type="text"' + (value ? 'value="' + value + '"' : '') + '></input>';
         n.id = 'n' + idnum;
         premisOL.appendChild(n);
         idnum++;
         fixnums();
       };
-      var makestate = function() {
+      var makestate = function(s, r) {
         var n = document.createElement('li');
-        n.innerHTML = '<input type="text"><input type="text">';
+        n.innerHTML = '<input type="text"' + (s ? 'value="'+s+'"' : '') + '></input><input type="text"' + (r ? 'value="'+r+'"' : '') + '></input>';
         n.id = 'n' + idnum;
         statementOL.appendChild(n);
         idnum++;
@@ -243,7 +280,7 @@
             return -1;
           }
         }
-        var m = r.match(/^\s*(\d+),?\s*([A-Z]+)\s*$/);
+        var m = r.match(/^\s*(\d+),?\s*([A-Za-z]+)\s*$/);
         if (m) {
           if (m[2] in rules1) {
             return {rule: m[2], lines: [ids[parseInt(m[1])]]};
@@ -251,7 +288,7 @@
             return -1;
           }
         }
-        m = r.match(/^\s*(\d+),\s*(\d+),?\s*([A-Z]+)\s*$/);
+        m = r.match(/^\s*(\d+),\s*(\d+),?\s*([A-Za-z]+)\s*$/);
         if (m) {
           if (m[3] in rules2) {
             return {rule: m[3], lines: [ids[parseInt(m[1])], names[parseInt(m[1])]]};
@@ -284,6 +321,7 @@
         var rv;
         var p;
         var node;
+        var text = document.getElementById('quick');
         for (var i = 0; i < ol.children.length; i++) {
           node = ol.children[i];
           if (node.tagName == 'ol') {
@@ -291,6 +329,7 @@
           } else {
             sv = _.trim(node.children[0].value);
             rv = _.trim(node.children[1].value);
+            text.value += sv + '\t' + rv + '\n';
             if (sv == '') {
               node.className = 'empty';
             } else if (parserule(rv) == -1) {
@@ -407,9 +446,12 @@
         var p;
         var v;
         var s;
+        var text = document.getElementById('quick');
+        text.value = '';
         for (var i = 0; i < premisOL.children.length; i++) {
           p = premisOL.children[i];
           v = _.trim(p.children[0].value);
+          text.value += v + '\n';
           if (v == '') {
             p.className = 'empty';
           } else {
@@ -427,6 +469,42 @@
         updatestatements(statementOL, ['main']);
         validate();
       };
+      var showhide = function() {
+        var text = document.getElementById('qdiv');
+        if (text.style.display != 'none') {
+          text.style.display = 'none';
+        } else {
+          text.style.display = 'block';
+        }
+      };
+      var fromquick = function() {
+        var text = document.getElementById('quick').value.split('\n');
+        var plist = [];
+        var slist = [];
+        for (var i = 0; i < text.length; i++) {
+          if (_.trim(text[i]).length > 0) {
+            var t = text[i].indexOf('\t');
+            if (t != -1) {
+              slist.push([text[i].slice(0,t), text[i].slice(t+1)]);
+            } else {
+              plist.push(text[i]);
+            }
+          }
+        }
+        document.getElementById('prem').value = plist.length;
+        document.getElementById('prems').innerHTML = '';
+        document.getElementById('proof').innerHTML = '';
+        statements = {};
+        for (var p = 0; p < plist.length; p++) {
+          makeprem(plist[p]);
+        }
+        for (var s = 0; s < slist.length; s++) {
+          makestate(slist[s][0], slist[s][1]);
+        }
+        fixnums();
+        update();
+      };
+      showhide();
       makeprem();
       makestate();
     </script>
