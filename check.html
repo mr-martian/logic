@@ -31,7 +31,13 @@
     <span class="bad">Badly formed input</span>
     <span class="badrule">Badly formed rule</span>
     <span class="invalid">Invalid line</span>
-    <span>or: ∨ and: ∙ not: ~ implies: ⊃ biconditional: ≡</span>
+    <div style="display: inline-block">
+      <input type="radio" name="inputmode" id="uni" checked="checked"></input>
+      <label for="uni">or: ∨ and: ∙ not: ~ implies: ⊃ biconditional: ≡</label>
+      <br>
+      <input type="radio" name="inputmode" id="asc" onchange="swapchars();"></input>
+      <label for="asc">or: ^ and: & not: ~ implies: > biconditional: =</label>
+    </div>
     <ol id="prems"></ol>
     <hr>
     <ol id="proof"></ol>
@@ -42,13 +48,18 @@
     </div>
     <button onclick="showhide();">Show/Hide textbox</button>
     <script>
-      var cor = "∨";
-      var cand = "∙";
-      var cnot = "~";
-      var cthen = "⊃";
-      var cbicond = "≡";
+      var cor, cand, cnot, cthen, cbicond;
       var names = {};
-      names[cand] = 'and'; names[cor] = 'or'; names[cthen] = 'implies'; names[cbicond] = 'bicond';
+      var swapchars = function() {
+        if (document.getElementById('uni').checked) {
+          cor = "∨"; cand = "∙"; cnot = "~"; cthen = "⊃"; cbicond = "≡";
+        } else {
+          cor = '^'; cand = '&'; cnot = '~'; cthen = '>'; cbicond = '=';
+        }
+        names = {};
+        names[cand] = 'and'; names[cor] = 'or'; names[cthen] = 'implies'; names[cbicond] = 'bicond';
+      };
+      swapchars();
       var cexists = "∃";
       var statements = {};
       var ids = [null];
@@ -68,7 +79,7 @@
                 path.pop();
                 path.push('op');
               } break;
-            case '~':
+            case cnot:
               _.set(ret, path, {left: 0, right: null, op: 'not'});
               path.push('right');
               break;
