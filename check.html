@@ -273,7 +273,7 @@
       };
       var getlastOL = function(node) {
         if (node.lastChild && node.lastChild.tagName == 'OL') {
-          return node.lastChild;
+          return getlastOL(node.lastChild);
         } else {
           return node;
         }
@@ -293,6 +293,7 @@
       var beginsubproof = function(s, r) {
         var el = document.createElement('ol');
         el.id = 'p' + indentcount;
+        indentcount++;
         getlastOL(statementOL).appendChild(el);
         makestate(s, r, false);
         update();

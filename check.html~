@@ -44,11 +44,11 @@
     <button onclick="makestate();">Add Statement</button>
     <button onclick="beginsubproof();">Add CP or IP</button>
     <button onclick="endsubproof();">End current CP or IP</button>
+    <button onclick="showhide();">Show/Hide textbox</button>
     <div id="qdiv">
       <textarea id="quick"></textarea>
       <button onclick="fromquick();">Parse</button>
     </div>
-    <button onclick="showhide();">Show/Hide textbox</button>
     <script>
       var cor, cand, cnot, cthen, cbicond;
       var names = {};
@@ -293,6 +293,7 @@
       var beginsubproof = function(s, r) {
         var el = document.createElement('ol');
         el.id = 'p' + indentcount;
+        indentcount++;
         getlastOL(statementOL).appendChild(el);
         makestate(s, r, false);
         update();
